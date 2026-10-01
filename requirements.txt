@@ -1,0 +1,7 @@
+# Dependencies are not included. 
+
+matplotlib==3.10.0
+python==3.13.15
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+tqdm==4.67.3
