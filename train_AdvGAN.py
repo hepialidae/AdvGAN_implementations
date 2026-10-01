@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 from torch.utils.data import Subset
+from pathlib import Path
 
 # The following function aims to calculate the loss of the generator using the loss formulas described in the original AdvGAN paper.
 # Paper: https://arxiv.org/abs/1801.02610$0
@@ -108,72 +109,87 @@ class AdvGAN_Attack:
   def train_advgan(self, train_dataloader, test_dataloader, targeted : bool = False,
                    train_target : torch.IntTensor | torch.LongTensor = None, # train_target should be a tensor containing all of the targets, corresponding to the training Dataloader
                    test_target : torch.IntTensor | torch.LongTensor = None,
-                   epochs : int = 1):
-    if targeted:
-      train_target, test_target = train_target.to(self.device), test_target.to(self.device)
+                   epochs : int = 1, 
+                   save_folder : Path = Path("models"), discriminator_file_name : str = "discriminator_statedict.pth", generator_file_name : str = "generator_statedict.pth"):
+    discriminator_save_path = save_folder / discriminator_file_name
+    generator_save_path = save_folder / generator_file_name
 
-    train_accs = []
-    test_accs = []
+    if discriminator_save_path.exists() or generator_save_path.exists():
+      self.discriminator.load_state_dict(torch.load(discriminator_save_path, map_location=torch.device(self.device)))
+      self.discriminator = self.discriminator.to(self.device)
+      self.generator.load_state_dict(torch.load(generator_save_path, map_location=torch.device(self.device)))
+      self.generator = self.generator.to(self.device)
+    else:
+      if targeted:
+        train_target, test_target = train_target.to(self.device), test_target.to(self.device)
 
-    self.target_model.eval()
+      train_accs = []
+      test_accs = []
 
-    for epoch in range(epochs):
-      # Training
-      self.discriminator.train()
-      self.generator.train()
+      self.target_model.eval()
 
-      D_train_loss, G_train_loss, target_train_acc = 0, 0, 0
+      for epoch in range(epochs):
+        # Training
+        self.discriminator.train()
+        self.generator.train()
 
-      for i, (imgs, labels) in enumerate(tqdm(train_dataloader, desc=f"AdvGAN Training | Epoch: {epoch + 1}/{epochs}")):
-        imgs, labels = imgs.to(self.device), labels.to(self.device)
+        D_train_loss, G_train_loss, target_train_acc = 0, 0, 0
 
-        target_subset = Subset(train_target, range(i * self.batch_size, (i + 1) * self.batch_size))
-        D_loss, G_loss = self.train_or_test_advgan(imgs, labels, train=True, targeted=targeted, target=target_subset)
-
-        D_train_loss += D_loss
-        G_train_loss += G_loss
-
-        attack_logits = self.target_model(imgs + self.generator(imgs))
-        attack_pred = torch.argmax(torch.softmax(attack_logits, dim=1), dim=1)
-        target_train_acc += (attack_pred == labels).sum().item()/len(attack_pred)
-
-      # Testing
-      self.discriminator.eval()
-      self.generator.eval()
-      with torch.inference_mode():
-        D_test_loss, G_test_loss, target_test_acc = 0, 0, 0
-
-        for j, (imgs, labels) in enumerate(tqdm(test_dataloader, desc=f"AdvGAN Testing | Epoch: {epoch + 1}/{epochs}")):
+        for i, (imgs, labels) in enumerate(tqdm(train_dataloader, desc=f"AdvGAN Training | Epoch: {epoch + 1}/{epochs}")):
           imgs, labels = imgs.to(self.device), labels.to(self.device)
 
-          target_subset = Subset(test_target, range(j * self.batch_size, (j + 1) * self.batch_size))
-          D_loss, G_loss = self.train_or_test_advgan(imgs, labels, train=False, targeted=targeted, target=target_subset)
+          target_subset = Subset(train_target, range(i * self.batch_size, (i + 1) * self.batch_size))
+          D_loss, G_loss = self.train_or_test_advgan(imgs, labels, train=True, targeted=targeted, target=target_subset)
 
-          D_test_loss += D_loss
-          G_test_loss += G_loss
+          D_train_loss += D_loss
+          G_train_loss += G_loss
 
-          # Attack success rate because loss isn't really a reliable indicator of performance
           attack_logits = self.target_model(imgs + self.generator(imgs))
           attack_pred = torch.argmax(torch.softmax(attack_logits, dim=1), dim=1)
-          target_test_acc += (attack_pred == labels).sum().item()/len(attack_pred)
+          target_train_acc += (attack_pred == labels).sum().item()/len(attack_pred)
 
-      print(f"\nEpoch: {epoch + 1}")
-      print(f"D_train_loss: {D_train_loss/len(train_dataloader):.3f} | G_train_loss: {G_train_loss/len(train_dataloader):.3f}")
-      print(f"D_test_loss: {D_test_loss/len(test_dataloader):.3f} | G_test_loss: {G_test_loss/len(test_dataloader):.3f}")
+        # Testing
+        self.discriminator.eval()
+        self.generator.eval()
+        with torch.inference_mode():
+          D_test_loss, G_test_loss, target_test_acc = 0, 0, 0
 
-      train_acc = target_train_acc / len(train_dataloader) * 100
-      train_accs.append(train_acc)
-      test_acc = target_test_acc / len(test_dataloader) * 100
-      test_accs.append(test_acc)
-      print(f"Target Model Accuracy (Train): {train_acc:.2f}%")
-      print(f"Target Model Accuracy (Test): {test_acc:.2f}%")
-      print(f"\n")
+          for j, (imgs, labels) in enumerate(tqdm(test_dataloader, desc=f"AdvGAN Testing | Epoch: {epoch + 1}/{epochs}")):
+            imgs, labels = imgs.to(self.device), labels.to(self.device)
 
-    plt.figure(figsize=[4, 4])
-    plt.plot(train_accs)
-    plt.title("Target Model Training Accuracy Over Time")
+            target_subset = Subset(test_target, range(j * self.batch_size, (j + 1) * self.batch_size))
+            D_loss, G_loss = self.train_or_test_advgan(imgs, labels, train=False, targeted=targeted, target=target_subset)
 
-    plt.figure(figsize=[4, 4])
-    plt.plot(test_accs)
-    plt.title("Target Model Testing Accuracy Over Time")
+            D_test_loss += D_loss
+            G_test_loss += G_loss
 
+            # Attack success rate because loss isn't really a reliable indicator of performance
+            attack_logits = self.target_model(imgs + self.generator(imgs))
+            attack_pred = torch.argmax(torch.softmax(attack_logits, dim=1), dim=1)
+            target_test_acc += (attack_pred == labels).sum().item()/len(attack_pred)
+
+        print(f"\nEpoch: {epoch + 1}")
+        print(f"D_train_loss: {D_train_loss/len(train_dataloader):.3f} | G_train_loss: {G_train_loss/len(train_dataloader):.3f}")
+        print(f"D_test_loss: {D_test_loss/len(test_dataloader):.3f} | G_test_loss: {G_test_loss/len(test_dataloader):.3f}")
+
+        train_acc = target_train_acc / len(train_dataloader) * 100
+        train_accs.append(train_acc)
+        test_acc = target_test_acc / len(test_dataloader) * 100
+        test_accs.append(test_acc)
+        print(f"Target Model Accuracy (Train): {train_acc:.2f}%")
+        print(f"Target Model Accuracy (Test): {test_acc:.2f}%")
+        print(f"\n")
+
+      # Output results
+      plt.figure(figsize=[4, 4])
+      plt.plot(train_accs)
+      plt.title("Target Model Training Accuracy Over Time")
+
+      plt.figure(figsize=[4, 4])
+      plt.plot(test_accs)
+      plt.title("Target Model Testing Accuracy Over Time")
+
+      # Save model
+      save_folder.mkdir(parents=True, exist_ok=True)
+      torch.save(obj=self.discriminator.state_dict(), f=discriminator_save_path)
+      torch.save(obj=self.discriminator.state_dict(), f=generator_save_path)
