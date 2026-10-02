@@ -4,7 +4,7 @@
 
 Licensor: [hepialidae](https://github.com/hepialidae)
 
-Repository (Further known as "software" in this document): AdvGAN_implementations
+Repository (Further known as "software" in this document): AdvGAN_implementations;
 If the name of the repository is different as shown here, as long as the license exists in the program files, the license still applies.
 
 Contact: [LinkedIn](www.linkedin.com/in/courtney-wong-ba5500355) (High priority) Email: luminous.seelie@gmail.com
