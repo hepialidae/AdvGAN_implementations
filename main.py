@@ -37,8 +37,7 @@ if __name__ == "__main__":
     target_optim_fn = torch.optim.Adam(params=classifier.parameters(), lr=0.0003)
     model_folder = Path("models") # for target model and GAN
     model_name = "target_model_statedict.pth"
-    discriminator_name = "discriminator_statedict.pth"
-    generator_name = "generator_statedict.pth"
+    
 
     train_model(classifier, train_dataloader, test_dataloader, target_loss_fn, target_optim_fn, epochs, model_folder, model_name, device)
 
@@ -46,8 +45,19 @@ if __name__ == "__main__":
     vanilla_discriminator = Discriminator(1)
     vanilla_generator = Generator(1, 128)
 
-    vanilla_AdvGAN = AdvGAN_Attack(vanilla_discriminator, vanilla_generator, classifier, 10, nn.CrossEntropyLoss(reduction="mean"), nn.BCEWithLogitsLoss(reduction="mean"), torch.optim.Adam(params=vanilla_discriminator.parameters(), lr=0.0003), torch.optim.Adam(params=vanilla_generator.parameters(), lr=0.0003),
-                               generator_loss_alpha=1.0, generator_loss_beta=1.0, kappa=0.1, c=0.5, batch_size=32, device=device)
+    # AdvGAN Settings:
+    D_loss_fn = nn.BCEWithLogitsLoss(reduction="mean")
+    D_optim_fn = torch.optim.Adam(params=vanilla_discriminator.parameters(), lr=0.0003)
+    G_optim_fn = torch.optim.Adam(params=vanilla_generator.parameters(), lr=0.0003)
+    generator_loss_alpha = 1.0
+    generator_loss_beta = 1.0
+    kappa = 0.1
+    c = 0.5
+    epochs = 15
+    discriminator_name = "discriminator_statedict.pth"
+    generator_name = "generator_statedict.pth"
+
+    vanilla_AdvGAN = AdvGAN_Attack(vanilla_discriminator, vanilla_generator, classifier, 10, nn.CrossEntropyLoss(reduction="mean"), D_loss_fn, D_optim_fn, G_optim_fn,
+                               generator_loss_alpha, generator_loss_beta, kappa, c, batch_size=32, device=device)
     vanilla_AdvGAN.train_advgan(train_dataloader, test_dataloader,
-                            epochs=15, 
-                            save_folder=model_folder, discriminator_file_name=discriminator_name, generator_file_name=generator_name)
+                            epochs, save_folder=model_folder, discriminator_file_name=discriminator_name, generator_file_name=generator_name)

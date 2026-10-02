@@ -193,3 +193,8 @@ class AdvGAN_Attack:
       save_folder.mkdir(parents=True, exist_ok=True)
       torch.save(obj=self.discriminator.state_dict(), f=discriminator_save_path)
       torch.save(obj=self.discriminator.state_dict(), f=generator_save_path)
+
+# Takes in a 1x28x28 image tensor and returns a adversarial example of the same shape
+  def inference_AdvGAN(self, input):
+    input = input.to(self.device)
+    return input + self.generator(input)

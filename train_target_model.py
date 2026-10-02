@@ -39,3 +39,9 @@ def train_model(model, train_dataset, test_dataset, loss_fn : torch.nn, optim_fn
       print(f"\nEpoch: {epoch + 1} | Train Loss: {train_loss / len(train_dataset)} | Test Loss: {test_loss / len(test_dataset)}\n")
     save_folder.mkdir(parents=True, exist_ok=True)
     torch.save(obj=model.state_dict(), f=save_path)
+
+# Classifies an 1x28x28 image tensor as digit 0-9
+def inference_target_model(model, input, device):
+  input = input.to(device)
+  logits = model(input)
+  return torch.argmax(torch.softmax(logits, dim=1), dim=1)
